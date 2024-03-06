@@ -94,7 +94,7 @@ def findPermafrost(simulation, timePeriod, datadir):
     return altAnnMean,altmaxMasked,altmaxAnn,lat,lon
 
 
-def getLandType(makeFigures,dataDir,figureDir):
+def getLandType(dataDir,figureDir):
     import xarray as xr
     import numpy as np
     import pandas as pd
@@ -130,32 +130,31 @@ def getLandType(makeFigures,dataDir,figureDir):
     
     numEns = len(ens)
     pfrostControl = {}
+    pfrostControl2034 = {} # for calculating carbon stocks
     pfrostFeedback = {}
     for i in range(numEns):
         pfrostControl[ens[i]] = altmaxAnnCONTROL[ens[i]][20:,:,:]
+        pfrostControl2034[ens[i]] = altmaxAnnCONTROL[ens[i]][19,:,:]
         pfrostFeedback[ens[i]] = altmaxAnnFEEDBACK[ens[i]]
         
     
-
-    #### Fig. 5a peatland map
-    import matplotlib as mpl
-    pinks = mpl.colormaps['pink_r'].resampled(20)
-    fig, ax = make_maps(peatland[20:,:],lat,lon,0,100,20,pinks,'% peatland cover',
-                        'a) Fixed peatland area in CESM2','Fig5a_peat_fraction','neither',False,False)
-    
-    
     ''' Each year, how much permafrost is in peatland? '''
-    years                      = np.linspace(2035,2069,35)
-    pfrostInPeatlandFeedback   = {}
-    pfrostInPeatlandControl    = {}
-    peatlandPfrostFeedbackArea = np.zeros((numEns,35)) * np.nan
-    totalPfrostFeedbackArea    = np.zeros((numEns,35)) * np.nan
-    peatlandPfrostControlArea  = np.zeros((numEns,35)) * np.nan
-    totalPfrostControlArea     = np.zeros((numEns,35)) * np.nan
+    years                       = np.linspace(2035,2069,35)
+    pfrostInPeatlandFeedback    = {}
+    pfrostInPeatlandControl     = {}
+    pfrostInPeatlandControl2034 = {}
+    peatlandPfrostFeedbackArea  = np.zeros((numEns,35)) * np.nan
+    totalPfrostFeedbackArea     = np.zeros((numEns,35)) * np.nan
+    peatlandPfrostControlArea   = np.zeros((numEns,35)) * np.nan
+    totalPfrostControlArea      = np.zeros((numEns,35)) * np.nan
     
     for i in range(numEns):
-        pfrostInPeatlandFeedback[ens[i]] = np.zeros((35,pfrostCONTROL[ens[0]].shape[1],pfrostCONTROL[ens[0]].shape[2])) * np.nan
-        pfrostInPeatlandControl[ens[i]]  = np.zeros((35,pfrostCONTROL[ens[0]].shape[1],pfrostCONTROL[ens[0]].shape[2])) * np.nan
+        pfrostInPeatlandFeedback[ens[i]]     = np.zeros((35,pfrostCONTROL[ens[0]].shape[1],pfrostCONTROL[ens[0]].shape[2])) * np.nan
+        pfrostInPeatlandControl[ens[i]]      = np.zeros((35,pfrostCONTROL[ens[0]].shape[1],pfrostCONTROL[ens[0]].shape[2])) * np.nan
+        pfrostInPeatlandControl2034[ens[i]]  = np.zeros((pfrostCONTROL[ens[0]].shape[1],pfrostCONTROL[ens[0]].shape[2])) * np.nan
+        pfrostInPeatlandControl2034[ens[i]]  = pfrostControl[ens[i]][19,:,:].where(
+                                                    peatland[20:,:].values >= 0.1)
+        
         for iyear in range(len(years)):
             ## pfrostFeedback = annual average (30x85x288)
             ## altmaxFeedback = every month (420x85x288)
@@ -180,26 +179,69 @@ def getLandType(makeFigures,dataDir,figureDir):
             peatlandPfrostControlArea[i,iyear]  = np.array(np.nansum((gridArea[20:,:].where(
                                                       ~np.isnan(pfrostInPeatlandControl[ens[i]][iyear,:,:]))/(
                                                       1000**2)),axis=(0,1)))
+                                                          
+                                                          
+    #### Fig. 5a peatland map
+    import matplotlib as mpl
+    pinks = mpl.colormaps['pink_r'].resampled(20)
+    fig, ax = make_maps(peatland[20:,:],lat,lon,0,100,20,pinks,'% peatland cover',
+                        'a) Fixed peatland area in CESM2','Fig5a_peat_fraction','neither',False,False)
+    
+    #### Fig. 5b permafrost peatland figure
+    ensMeanFeedback = make_ensemble_mean_timeseries(peatlandPfrostFeedbackArea, numEns)
+    ensMeanControl = make_ensemble_mean_timeseries(peatlandPfrostControlArea, numEns)
+    
+    fig, ax = plt.subplots(figsize=(12,5),dpi=1200)    
+    for i in range(numEns):
+        plt.plot(
+            (100 - (peatlandPfrostFeedbackArea[i,0] - peatlandPfrostFeedbackArea[
+                i,:])/peatlandPfrostFeedbackArea[i,0]*100),
+                color='xkcd:sky blue',linewidth=0.9)
+        plt.plot(
+            (100 - (peatlandPfrostControlArea[i,0] - peatlandPfrostControlArea
+                    [i,:])/peatlandPfrostControlArea[i,0]*100),
+                color='xkcd:pale red',linewidth=0.9,linestyle='--')
+    plt.plot(100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100),
+             color='xkcd:blue',linewidth=3,label='ARISE-SAI-1.5')
+    plt.plot(100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100),
+             color='xkcd:scarlet',linewidth=3,label='SSP2-4.5',linestyle='--')
+    print("control percent: ", (100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100)))
+    print(" ")
+    print("feedback percent: ", (100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100)))
+    plt.ylabel('% of 2035 permafrost peatland remaining', fontsize=11)
+    plt.title('b) Permafrost peatland remaining', fontsize=14, fontweight='bold')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim(top=105)
+    plt.axhline(100,linestyle='dotted',color='gray',linewidth=1)
+    plt.legend(fancybox=True, fontsize=13)
+    plt.savefig(figureDir + 'Fig5b_percent_peatland_permafrost_soil_only_timeseries.jpg', 
+                dpi=1200, bbox_inches='tight')
+    
+    from scipy.stats import ttest_ind
+    v1 = (100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100))
+    v2 = (100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100))
+    res = ttest_ind(v1[:5], v2[:5])
+    print("permafrost peatland remaining stats: ", res) # sig different at 95% confidence level by 4th year
+                                                        
     
     ####################################
     ## CARBON OUT OF PERMAFROST SOILS ##
     ####################################
     '''
-    Cumulative annual total respiration from 2035 to 2069 to see if model can 
-    detect a difference in 'irreversible' soil carbon loss
-    1. Multiply monthly mean rate by days in month
-    2. Multiply by seconds per day to get total land emissions per month
-    3. Sum over year to get annual land emissions
-    4. Cumulative sum over time
+    PF Domain Soil C (soil and litter C changes)
+    PF Domain TOTECOSYSC (total ecosystem carbon)
+    PF Domain Vegetation C
     '''
         
     #### TOTECOSYSC
     '''total ecosystem carbon - control '''
-    TOTECOSYSCControl         = {}
-    TOTECOSYSCPeatControl     = {}
-    TOTECOSYSCControl_all     = {}
-    TOTECOSYSCCumControl      = {}
-    TOTECOSYSCCumPeatControl  = {}
+    TOTECOSYSCControl           = {}
+    TOTECOSYSCPeatControl       = {}
+    TOTECOSYSCPermafrostControl = {}
+    TOTECOSYSCControl_gC           = {}
+    TOTECOSYSCPermafrostControl_gC = {}
+    TOTECOSYSCPeatControl_gC       = {}
+    
     for i in range(len(ens)):
         ds = xr.open_dataset(dataDir + '/b.e21.BWSSP245cmip6.f09_g17.CMIP6-SSP2-4.5-WACCM.' + str(ens[i]) +
                              '.clm2.h0.TOTECOSYSC.201501-206912_NH.nc', decode_times=False)
@@ -207,37 +249,36 @@ def getLandType(makeFigures,dataDir,figureDir):
         ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
         lat = ds.lat; lon = ds.lon; 
         
-        TOTECOSYSCControl[ens[i]]        = ds['TOTECOSYSC'][240:,41:,:]
+        TOTECOSYSCControl_all           = ds['TOTECOSYSC'][240:,41:,:]
         
-        # annual gC/m2 - summed
-        TOTECOSYSCControl_all[ens[i]]    = ((TOTECOSYSCControl[ens[i]].groupby('time.year').mean(
-                                                                    dim='time', skipna=True))*gridArea).cumsum(axis=0,skipna=True)
-        TOTECOSYSCControl_all[ens[i]]    = TOTECOSYSCControl_all[ens[i]].cumsum(axis=0,skipna=True)#.where(
-                                                        #~np.isnan(pfrostControl[ens[i]))
-        
-        # # ## cumulative since 2035
-        # TOTECOSYSCCumControl[ens[i]]     = TOTECOSYSCControl[ens[i]].cumsum(
-        #                                                 axis=0)
-        # TOTECOSYSCCumControl[ens[i]]     = TOTECOSYSCCumControl[ens[i]].where(
-        #                                                       ~np.isnan(pfrostControl[ens[i]]))
-        # TOTECOSYSCCumPeatControl[ens[i]] = TOTECOSYSCCumControl[ens[i]].where(
-        #                                                 ~np.isnan(pfrostInPeatlandControl[ens[i]]))
-        ## annual mean in pfrost
-        TOTECOSYSCControl[ens[i]]        = (TOTECOSYSCControl[ens[i]].groupby('time.year').mean(
-                                                                    dim='time', skipna=True))
-        TOTECOSYSCControl[ens[i]]        = TOTECOSYSCControl[ens[i]].where(
+        ## annual mean in pfrost, gC/m2
+        TOTECOSYSCControl[ens[i]]           = TOTECOSYSCControl_all.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTECOSYSCPermafrostControl[ens[i]] = TOTECOSYSCControl[ens[i]].where(
                                                         ~np.isnan(pfrostControl[ens[i]]))
-        TOTECOSYSCPeatControl[ens[i]]    = TOTECOSYSCControl[ens[i]].where(
+        # only in peatland permafrost
+        TOTECOSYSCPeatControl[ens[i]]       = TOTECOSYSCPermafrostControl[ens[i]].where(
                                                         ~np.isnan(pfrostInPeatlandControl[ens[i]]))
+        
+        ## annual mean in pfrost, gC in 2034 pf domain
+        TOTECOSYSCControl_gC[ens[i]]           = ((TOTECOSYSCControl_all.groupby('time.year').sum(
+                                                                    dim='time', skipna=True))*gridArea[20:,:])
+        TOTECOSYSCPermafrostControl_gC[ens[i]] = TOTECOSYSCControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in peatland permafrost
+        TOTECOSYSCPeatControl_gC[ens[i]]       = TOTECOSYSCPermafrostControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
+        
         ds.close()
         
         
     '''total ecosystem carbon from permafrost soils - FEEDBACK'''
-    TOTECOSYSCFeedback        = {}
-    TOTECOSYSCFeedback_all    = {}
-    TOTECOSYSCPeatFeedback    = {}
-    TOTECOSYSCCumFeedback     = {}
-    TOTECOSYSCCumPeatFeedback = {}
+    TOTECOSYSCFeedback           = {}
+    TOTECOSYSCPeatFeedback       = {}
+    TOTECOSYSCPermafrostFeedback = {}
+    TOTECOSYSCFeedback_gC           = {}
+    TOTECOSYSCPermafrostFeedback_gC = {}
+    TOTECOSYSCPeatFeedback_gC       = {}
     for i in range(len(ens)):
         ds = xr.open_dataset(dataDir + '/b.e21.BW.f09_g17.SSP245-TSMLT-GAUSS-DEFAULT.' + str(ens[i]) +
                              '.clm2.h0.TOTECOSYSC.203501-206912_NH.nc', decode_times=False)
@@ -245,468 +286,570 @@ def getLandType(makeFigures,dataDir,figureDir):
         ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
         lat = ds.lat
         lon = ds.lon
-        TOTECOSYSCFeedback[ens[i]]        = ds['TOTECOSYSC'][:,41:,:]
+        TOTECOSYSCFeedback_all          = ds['TOTECOSYSC'][:,41:,:]
         ds.close()
-        # annual gC/m2
-        TOTECOSYSCFeedback_all[ens[i]]    = (TOTECOSYSCFeedback[ens[i]].groupby('time.year').sum(
-                                                                    dim='time', skipna=True))*gridArea
-        ## cumulative since 2035
-        TOTECOSYSCCumFeedback[ens[i]]     = TOTECOSYSCFeedback[ens[i]].cumsum(
-                                                                axis=0)
-        TOTECOSYSCCumFeedback[ens[i]]     = TOTECOSYSCCumFeedback[ens[i]].where(
-                                                              ~np.isnan(pfrostFeedback[ens[i]]))
-        TOTECOSYSCCumPeatFeedback[ens[i]] = TOTECOSYSCCumFeedback[ens[i]].where(
-                                                              ~np.isnan(pfrostInPeatlandFeedback[ens[i]]))
-        ## annual mean in pfrost 
-        TOTECOSYSCFeedback[ens[i]]        = (TOTECOSYSCFeedback[ens[i]].groupby('time.year').mean(
-                                                                    dim='time', skipna=True))
-        TOTECOSYSCFeedback[ens[i]]        = TOTECOSYSCFeedback[ens[i]].where(
-                                                              ~np.isnan(pfrostFeedback[ens[i]]))
-        TOTECOSYSCPeatFeedback[ens[i]]    = TOTECOSYSCFeedback[ens[i]].where(
-                                                              ~np.isnan(pfrostInPeatlandFeedback[ens[i]]))
+        
+        ## annual mean in pfrost, gC/m2
+        TOTECOSYSCFeedback[ens[i]]           = TOTECOSYSCFeedback_all.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTECOSYSCPermafrostFeedback[ens[i]] = TOTECOSYSCFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostFeedback[ens[i]]))
+        # only in permafrost peatland
+        TOTECOSYSCPeatFeedback[ens[i]]       = TOTECOSYSCFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostInPeatlandFeedback[ens[i]]))
+        
+        ## annual mean in pfrost, gC in inital (2035) pf domain
+        TOTECOSYSCFeedback_gC[ens[i]]           = (TOTECOSYSCFeedback_all.groupby('time.year').sum(
+                                                                    dim='time', skipna=True)*gridArea[20:,:])
+        TOTECOSYSCPermafrostFeedback_gC[ens[i]] = TOTECOSYSCFeedback_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in peatland permafrost
+        TOTECOSYSCPeatFeedback_gC[ens[i]]       = TOTECOSYSCPermafrostFeedback_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
         
         
-    
-    #### figures 
+    #### TOTSOMC
+    '''total soil and litter carbon - control '''
+    TOTSoilCPeatControl       = {}
+    TOTSoilCPermafrostControl = {}
+    TOTSoilCPeatControl_gC       = {}
+    TOTSoilCPermafrostControl_gC = {}
+    for i in range(len(ens)):
+        ds = xr.open_dataset(dataDir + '/b.e21.BWSSP245cmip6.f09_g17.CMIP6-SSP2-4.5-WACCM.' + str(ens[i]) +
+                             '.clm2.h0.TOTSOMC.201501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        TOTSOMCControl_ungrouped         = ds['TOTSOMC'][240:,:,:]
+        ds.close()
+        
+        ds = xr.open_dataset(dataDir + '/b.e21.BWSSP245cmip6.f09_g17.CMIP6-SSP2-4.5-WACCM.' + str(ens[i]) +
+                             '.clm2.h0.TOTLITC.201501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        TOTLitCControl_ungrouped         = ds['TOTLITC'][240:,:,:]
+        ds.close()
+        
+        TOTSoilCControl_ungrouped = TOTSOMCControl_ungrouped + TOTLitCControl_ungrouped
+        
+        ## annual mean in pfrost, gC/m2
+        TOTSoilCPermafrostControl[ens[i]] = TOTSoilCControl_ungrouped.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTSoilCPermafrostControl[ens[i]] = TOTSoilCPermafrostControl[ens[i]].where(
+                                                        ~np.isnan(pfrostControl[ens[i]]))
+        # only in peatland permafrost
+        TOTSoilCPeatControl[ens[i]]       = TOTSoilCPermafrostControl[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl[ens[i]]))
+        
+        ## annual mean in pfrost, gC
+        TOTSoilCPermafrostControl_gC[ens[i]] = (TOTSoilCControl_ungrouped.groupby('time.year').sum(
+                                                                    dim='time', skipna=True))*gridArea[20:,:]
+        TOTSoilCPermafrostControl_gC[ens[i]] = TOTSoilCPermafrostControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in peatland permafrost
+        TOTSoilCPeatControl_gC[ens[i]]       = TOTSoilCPermafrostControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
+        
+        
+        
+    '''total soil organic matter carbon - FEEDBACK'''
+    TOTSoilCPeatFeedback       = {}
+    TOTSoilCPermafrostFeedback = {}
+    TOTSoilCPeatFeedback_gC       = {}
+    TOTSoilCPermafrostFeedback_gC = {}
+    for i in range(len(ens)):
+        ds = xr.open_dataset(dataDir + '/b.e21.BW.f09_g17.SSP245-TSMLT-GAUSS-DEFAULT.' + str(ens[i]) +
+                             '.clm2.h0.TOTSOMC.203501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        TOTSOMCFeedback_ungrouped          = ds['TOTSOMC']
+        ds.close()
+        
+        ds = xr.open_dataset(dataDir + '/b.e21.BW.f09_g17.SSP245-TSMLT-GAUSS-DEFAULT.' + str(ens[i]) +
+                             '.clm2.h0.TOTLITC.203501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        TOTLITCFeedback_ungrouped          = ds['TOTLITC']
+        ds.close()
+        
+        TOTSoilCFeedback = TOTSOMCFeedback_ungrouped + TOTLITCFeedback_ungrouped
+        
+        ## annual mean in pfrost, gC/m2
+        TOTSoilCPermafrostFeedback[ens[i]] = TOTSoilCFeedback.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTSoilCPermafrostFeedback[ens[i]]  = TOTSoilCPermafrostFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostFeedback[ens[i]]))
+        # only in permafrost peatland
+        TOTSoilCPeatFeedback[ens[i]]        = TOTSoilCPermafrostFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostInPeatlandFeedback[ens[i]]))
+        
+        ## annual mean in pfrost, gC
+        TOTSoilCPermafrostFeedback_gC[ens[i]] = (TOTSoilCFeedback.groupby('time.year').sum(
+                                                                    dim='time', skipna=True))*gridArea[20:,:]
+        TOTSoilCPermafrostFeedback_gC[ens[i]]  = TOTSoilCPermafrostFeedback_gC[ens[i]].where(
+                                                ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in permafrost peatland
+        TOTSoilCPeatFeedback_gC[ens[i]]        = TOTSoilCPermafrostFeedback_gC[ens[i]].where(
+                                                ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
+        
+        
+    #### TOTVEGC
+    '''total veg carbon - control '''
+    TOTVEGCControl           = {}
+    TOTVEGCPeatControl       = {}
+    TOTVEGCPermafrostControl = {}
+    TOTVEGCControl_gC        = {}
+    TOTVEGCPeatControl_gC       = {}
+    TOTVEGCPermafrostControl_gC = {}
+    for i in range(len(ens)):
+        ds = xr.open_dataset(dataDir + '/b.e21.BWSSP245cmip6.f09_g17.CMIP6-SSP2-4.5-WACCM.' + str(ens[i]) +
+                             '.clm2.h0.TOTVEGC.201501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        lat = ds.lat; lon = ds.lon; 
+        
+        TOTVEGCControl_ungrouped          = ds['TOTVEGC'][240:,:,:]
+        
+        ## annual mean in pfrost, gC/m2
+        TOTVEGCControl[ens[i]]           = TOTVEGCControl_ungrouped.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTVEGCPermafrostControl[ens[i]] = TOTVEGCControl[ens[i]].where(
+                                                        ~np.isnan(pfrostControl[ens[i]]))
+        # only in peatland permafrost
+        TOTVEGCPeatControl[ens[i]]       = TOTVEGCPermafrostControl[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl[ens[i]]))
+        
+        ## annual mean in pfrost, gC
+        TOTVEGCControl_gC[ens[i]]           = (TOTVEGCControl_ungrouped.groupby('time.year').sum(
+                                                                    dim='time', skipna=True))*gridArea[20:,:]
+        TOTVEGCPermafrostControl_gC[ens[i]] = TOTVEGCControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in peatland permafrost
+        TOTVEGCPeatControl_gC[ens[i]]       = TOTVEGCPermafrostControl_gC[ens[i]].where(
+                                                        ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
+        
+        ds.close()
+        
+        
+    '''total veg carbon - FEEDBACK'''
+    TOTVEGCFeedback           = {}
+    TOTVEGCPeatFeedback       = {}
+    TOTVEGCPermafrostFeedback = {}
+    TOTVEGCFeedback_gC         = {}
+    TOTVEGCPeatFeedback_gC     = {}
+    TOTVEGCPermafrostFeedback_gC = {}
+    for i in range(len(ens)):
+        ds = xr.open_dataset(dataDir + '/b.e21.BW.f09_g17.SSP245-TSMLT-GAUSS-DEFAULT.' + str(ens[i]) +
+                             '.clm2.h0.TOTVEGC.203501-206912_NH.nc', decode_times=False)
+        units, reference_date = ds.time.attrs['units'].split('since')
+        ds['time'] = pd.date_range(start=reference_date, periods=ds.sizes['time'], freq='MS')
+        lat = ds.lat
+        lon = ds.lon
+        TOTVEGCFeedback_ungrouped           = ds['TOTVEGC']
+        ds.close()
+        
+        ## annual mean in pfrost, gC/m2
+        TOTVEGCFeedback[ens[i]]           = TOTVEGCFeedback_ungrouped.groupby('time.year').mean(
+                                                                    dim='time', skipna=True)
+        TOTVEGCPermafrostFeedback[ens[i]] = TOTVEGCFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostFeedback[ens[i]]))
+        # only in permafrost peatland
+        TOTVEGCPeatFeedback[ens[i]]       = TOTVEGCFeedback[ens[i]].where(
+                                                ~np.isnan(pfrostInPeatlandFeedback[ens[i]]))
+        
+        ## annual mean in pfrost, gC
+        TOTVEGCFeedback_gC[ens[i]]           = (TOTVEGCFeedback_ungrouped.groupby('time.year').sum(
+                                                                    dim='time', skipna=True))*gridArea[20:,:]
+        TOTVEGCPermafrostFeedback_gC[ens[i]] = TOTVEGCFeedback_gC[ens[i]].where(
+                                                ~np.isnan(pfrostControl2034[ens[i]]))
+        # only in permafrost peatland
+        TOTVEGCPeatFeedback_gC[ens[i]]       = TOTVEGCFeedback_gC[ens[i]].where(
+                                                ~np.isnan(pfrostInPeatlandControl2034[ens[i]]))
+        
+            
     ''' FIGURES'''
-    if makeFigures:
-        #### TOTECOSYSC
-        ensMembersTOTECOSYSCCumCONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCCumControl)
-        ensMeanTOTECOSYSCCumCONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCumCONTROL_ts, numEns)
-        ensMembersTOTECOSYSCCumFEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCCumFeedback)
-        ensMeanTOTECOSYSCCumFEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCumFEEDBACK_ts, numEns)
-        ensMembersTOTECOSYSCCum_PEAT_CONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCCumPeatControl)
-        ensMeanTOTECOSYSCCum_PEAT_CONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCum_PEAT_CONTROL_ts, numEns)
-        ensMembersTOTECOSYSCCum_PEAT_FEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCCumPeatFeedback)
-        ensMeanTOTECOSYSCCum_PEAT_FEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCum_PEAT_FEEDBACK_ts, numEns)
-        
-        # ## ---- cumulative carbon per square meter from permafrost soils ---- ##
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot(ensMembersTOTECOSYSCCumCONTROL_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCCumFEEDBACK_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCCum_PEAT_CONTROL_ts[ens[ensNum]]/1000.,
-        #              linestyle='dotted',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCCum_PEAT_FEEDBACK_ts[ens[ensNum]]/1000.,
-        #              linestyle='dotted',color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot(ensMeanTOTECOSYSCCumCONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linewidth=2.5,
-        #              label='SSP2-4.5 total permafrost')
-        # plt.plot(ensMeanTOTECOSYSCCumFEEDBACK_ts/1000.,
-        #              color='xkcd:blue',linewidth=2.5,
-        #              label='ARISE-SAI-1.5 total permafrost')
-        # plt.plot(ensMeanTOTECOSYSCCum_PEAT_CONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #              label='SSP2-4.5 permafrost peat')
-        # plt.plot(ensMeanTOTECOSYSCCum_PEAT_FEEDBACK_ts/1000.,
-        #               color='xkcd:blue',linestyle='dashed',linewidth=2.5,
-        #               label='ARISE-SAI-1.5 permafrost peat')
-        # plt.legend(fancybox=True, fontsize=13, loc=(0.12,-0.275), ncol=2)
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); plt.ylim(bottom=0)
-        # plt.ylabel('Permafrost ecosystem C (kgC $\mathregular{m^{-2}}$)', fontsize=11)
-        # plt.title('a) Cumulative total ecosystem C from permafrost region (per $\mathregular{m^{-2}})$', fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + '/nh_cumulative_TOTECOSYSC_per_area_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        
-        ensMembersTOTECOSYSCCONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCControl)
-        ensMeanTOTECOSYSCCONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCONTROL_ts, numEns)
-        ensMembersTOTECOSYSCFEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCFeedback)
-        ensMeanTOTECOSYSCFEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCFEEDBACK_ts, numEns)
-        ensMembersTOTECOSYSC_PEAT_CONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatControl)
-        ensMeanTOTECOSYSC_PEAT_CONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_CONTROL_ts, numEns)
-        ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatFeedback)
-        ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts, numEns)
-        
-        ## ---- annual mean carbon per square meter from permafrost soils ---- ##
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot(ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:pale red',linestyle='dashed',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot(ensMeanTOTECOSYSCCONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #              label='SSP2-4.5')
-        # plt.plot(ensMeanTOTECOSYSCFEEDBACK_ts/1000.,
-        #              color='xkcd:blue',linewidth=2.5,
-        #              label='ARISE-SAI-1.5')
-        # plt.legend(fancybox=True, fontsize=14, loc='lower right')
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); 
-        # plt.ylabel('Permafrost ecosystem C (kgC $\mathregular{m^{-2}}$)', fontsize=11)
-        # plt.title('a) Total ecosystem C from permafrost (per $\mathregular{m^{-2}})$', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + '/nh_annual_mean_TOTECOSYSC_per_area_summed_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        #### Fig. 6a all permafrost per square meter - change from 2035
-        fig = plt.figure(figsize=(12,5),dpi=1200)
-        for ensNum in range(len(ens)):
-            plt.plot((ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]] - ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]][0])/1000.,
-                     linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-            plt.plot((ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]][0])/1000.,
-                     color='xkcd:sky blue',linewidth=0.9)
-        plt.plot((ensMeanTOTECOSYSCCONTROL_ts - ensMeanTOTECOSYSCCONTROL_ts[0])/1000.,
-                     color='xkcd:scarlet',linestyle='dashed',linewidth=3,
-                     label='SSP2-4.5')
-        plt.plot((ensMeanTOTECOSYSCFEEDBACK_ts - ensMeanTOTECOSYSCFEEDBACK_ts[0])/1000.,
-                      color='xkcd:blue',linewidth=3,
-                      label='ARISE-SAI-1.5')
-        plt.legend(fancybox=True, fontsize=13)
-        plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
-        plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        plt.xlim([0,34]); plt.ylim([-12,27])
-        plt.ylabel('$\Delta$ permafrost soil C (kg $\mathregular{m^{-2}}$)', fontsize=11)
-        plt.title('a) $\Delta$ Total ecosystem C from permafrost (per $\mathregular{m^{-2}})$', 
-                  fontsize=14, fontweight='bold')
-        plt.savefig(figureDir + '/Fig6a_nh_annual_mean_change_in_TOTECOSYSC_per_area_2035-2069.jpg',
-                    bbox_inches='tight',dpi=1200)
-        del fig
-        
-        # ## total carbon all permafrost - change from 2035
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot((ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]]*totalPfrostControlArea[ensNum,:] - ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]][0]*totalPfrostControlArea[ensNum,0])/1e12,
-        #              linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot((ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]]*totalPfrostFeedbackArea[ensNum,:] - ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]][0]*totalPfrostFeedbackArea[ensNum,0])/1e12,
-        #               color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot((ensMeanTOTECOSYSCCONTROL_ts*pfrostEnsMeanControlArea - ensMeanTOTECOSYSCCONTROL_ts[0]*pfrostEnsMeanControlArea[0])/1e12,
-        #               color='xkcd:scarlet',linestyle='dashed',linewidth=3,
-        #               label='SSP2-4.5')
-        # plt.plot((ensMeanTOTECOSYSCFEEDBACK_ts*pfrostEnsMeanFeedbackArea - ensMeanTOTECOSYSCFEEDBACK_ts[0]*pfrostEnsMeanFeedbackArea[0])/1e12,
-        #               color='xkcd:blue',linewidth=3,
-        #               label='ARISE-SAI-1.5')
-        # plt.legend(fancybox=True, fontsize=13, loc='lower left')
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); plt.ylim([-1.9,0.15])
-        # plt.ylabel('$\Delta$ permafrost soil C (Tg)', fontsize=11)
-        # plt.title('a) $\Delta$ Total ecosystem C from permafrost', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + '/nh_annual_mean_change_in_TOTECOSYSC_summed_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        # ## from peat
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot(ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]]/1000.,
-        #              linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot(ensMeanTOTECOSYSC_PEAT_CONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linestyle='dashed',linewidth=3,
-        #              label='SSP2-4.5 permafrost peat')
-        # plt.plot(ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts/1000.,
-        #               color='xkcd:blue',linewidth=3,
-        #               label='ARISE-SAI-1.5 permafrost peat')
-        # # plt.legend(fancybox=True, fontsize=13)
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); plt.ylim([45,130])
-        # plt.ylabel('Permafrost ecosystem C (kgC $\mathregular{m^{-2}}$)', fontsize=11)
-        # plt.title('b) Total ecosystem C from permafrost peatland (per $\mathregular{m^{-2}})$', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + '/nh_annual_mean_TOTECOSYSC_PEATLAND_per_area_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        #### Fig. 6b from peat - change from 2035
-        fig = plt.figure(figsize=(12,5),dpi=1200)
-        for ensNum in range(len(ens)):
-            plt.plot((ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]][0])/1000.,
-                     linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-            plt.plot((ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]][0])/1000.,
-                     color='xkcd:sky blue',linewidth=0.9)
-        plt.plot((ensMeanTOTECOSYSC_PEAT_CONTROL_ts - ensMeanTOTECOSYSC_PEAT_CONTROL_ts[0])/1000.,
-                     color='xkcd:scarlet',linestyle='dashed',linewidth=3,
-                     label='SSP2-4.5 permafrost peat')
-        plt.plot((ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts - ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts[0])/1000.,
-                      color='xkcd:blue',linewidth=3,
-                      label='ARISE-SAI-1.5 permafrost peat')
-        # plt.legend(fancybox=True, fontsize=13)
-        plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
-        plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        plt.xlim([0,34]); plt.ylim([-12,27])
-        plt.ylabel('$\Delta$ permafrost peat C (kg $\mathregular{m^{-2}}$)', fontsize=11)
-        plt.title('b) $\Delta$ Total ecosystem C from permafrost peatland (per $\mathregular{m^{-2}})$', 
-                  fontsize=14, fontweight='bold')
-        plt.savefig(figureDir + '/Fig6b_nh_annual_mean_change_in_TOTECOSYSC_PEATLAND_per_area_2035-2069.jpg',
-                    bbox_inches='tight',dpi=1200)
-        del fig
-        
-        
-        # ## total carbon peatland - change from 2035
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot((ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]]*peatlandPfrostControlArea[ensNum,:] - ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]][0]*peatlandPfrostControlArea[ensNum,0])/1e12,
-        #              linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot((ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]]*peatlandPfrostFeedbackArea[ensNum,:] - ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]][0]*peatlandPfrostFeedbackArea[ensNum,0])/1e12,
-        #               color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot((ensMeanTOTECOSYSC_PEAT_CONTROL_ts*peatlandEnsMeanControlArea - ensMeanTOTECOSYSC_PEAT_CONTROL_ts[0]*peatlandEnsMeanControlArea[0])/1e12,
-        #               color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #               label='SSP2-4.5')
-        # plt.plot((ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts*peatlandEnsMeanFeedbackArea - ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts[0]*peatlandEnsMeanFeedbackArea[0])/1e12,
-        #               color='xkcd:blue',linewidth=2.5,
-        #               label='ARISE-SAI-1.5')
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); #plt.ylim([-1.9,0.15])
-        # plt.ylabel('$\Delta$ permafrost soil C (Tg)', fontsize=11)
-        # plt.title('b) $\Delta$ Peatland ecosystem C from permafrost', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + '/nh_annual_mean_change_in_TOTECOSYSC_PEATLAND_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        
-        # ## in talik
-        # import pickle
-        # with open(dataDir + '/talikAnnFEEDBACK.pkl', 'rb') as fp:
-        #     talikAnnFEEDBACK = pickle.load(fp)
-        # with open(dataDir + '/talikAnnCONTROL.pkl', 'rb') as fp:
-        #     talikAnnCONTROL = pickle.load(fp)
-           
-        # '''control'''
-        # TOTECOSYSC_mask = {}
-        # talikAnnCONTROL_mask = talikAnnCONTROL.copy()
-        # for i in range(len(ens)):
-        #     print(i)
-        #     TOTECOSYSC_mask[ens[i]] = np.empty((35,44,288)) * np.nan
-        #     talikAnnCONTROL_mask[ens[i]][talikAnnCONTROL_mask[ens[i]] <=20] = 20
-        #     # first year = only where there's talik from 2015-2035, otherwise replace with nan
-        #     for iyear in range(35): 
-        #         TOTECOSYSC_mask[ens[i]][iyear,:,:] = np.where(
-        #                                     (talikAnnCONTROL_mask[ens[i]] == iyear+20), 
-        #                                     TOTECOSYSCControl[ens[i]][iyear,:,:], np.nan)
-                
-        # # ensMembersTOTECOSYSCCONTROL_talik_ts = {}
-        # cumulativeEcoC = {}
-        # for i in range(len(ens)):
-        #     cumulativeEcoC[ens[i]] = np.nancumsum(TOTECOSYSC_mask[ens[i]],axis=0)
-        #     cumulativeEcoC[ens[i]][cumulativeEcoC[ens[i]] == 0] = np.nan
-        
-        # ensMembersTOTECOSYSCCONTROL_talik_ts = make_timeseries(10,'TOTECOSYSC',lat,lon,
-        #                                                                90,49.5,360,0,
-        #                                                                cumulativeEcoC)
-        # del TOTECOSYSC_mask, cumulativeEcoC
-        
-        # '''feedback'''
-        # TOTECOSYSC_mask = {}
-        # talikAnnFEEDBACK_mask = talikAnnFEEDBACK.copy()
-        # for i in range(len(ens)):
-        #     print(i)
-        #     TOTECOSYSC_mask[ens[i]] = np.empty((35,44,288)) * np.nan
-        #     talikAnnFEEDBACK_mask[ens[i]][talikAnnFEEDBACK_mask[ens[i]] <=20] = 20
-        #     # first year = only where there's talik from 2015-2035, otherwise replace with nan
-        #     for iyear in range(35): 
-        #         TOTECOSYSC_mask[ens[i]][iyear,:,:] = np.where(
-        #                                     (talikAnnFEEDBACK_mask[ens[i]] == iyear+20), 
-        #                                     TOTECOSYSCFeedback[ens[i]][iyear,:,:], np.nan)
-                
-        # cumulativeEcoC = {}
-        # for i in range(len(ens)):
-        #     cumulativeEcoC[ens[i]] = np.nancumsum(TOTECOSYSC_mask[ens[i]],axis=0)
-        #     cumulativeEcoC[ens[i]][cumulativeEcoC[ens[i]] == 0] = np.nan
-        
-        # ensMembersTOTECOSYSCFEEDBACK_talik_ts = make_timeseries(10,'TOTECOSYSC',lat,lon,
-        #                                                                90,49.5,360,0,
-        #                                                                cumulativeEcoC)
-        
-        
-        # ## ensemble mean
-        # TOTECOSYSC_mean_control_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCONTROL_talik_ts, 10)
-        # TOTECOSYSC_mean_feedback_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCFEEDBACK_talik_ts, 10)
-        
-        # TOTECOSYSCmean_control = np.nanmean(np.stack((TOTECOSYSCControl.values())),axis=0)
-        # talikAnnCONTROLmean_mask = talikAnnCONTROLmean.copy()
-        # talikAnnCONTROLmean_mask[talikAnnCONTROLmean_mask <= 20] = 20
-        # TOTECOSYSCmean_mask = np.empty((35,44,288))
-        # for iyear in range(35):
-        #     TOTECOSYSCmean_mask[iyear,:,:] = np.where(talikAnnCONTROLmean_mask == iyear+20,
-        #                                               TOTECOSYSCmean_control[iyear,:,:], np.nan)
-            
-        # TOTECOSYSC_mean_control_ts = make_timeseries(10,'TOTECOSYSC',
-        #                                              lat,lon,90,49.5,360,0,TOTECOSYSCmean_mask.cumsum(axis=0))
-        
-        
-        # ## figure for TOTECOSYSC in talik
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot(ensMembersTOTECOSYSCCONTROL_talik_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:pale red',linestyle='dashed',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCFEEDBACK_talik_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot(TOTECOSYSC_mean_control_ts/1000.,
-        #               color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #               label='SSP2-4.5')
-        # plt.plot(TOTECOSYSC_mean_feedback_ts/1000.,
-        #               color='xkcd:blue',linewidth=2.5,
-        #               label='ARISE-SAI-1.5')
-        # #plt.legend(fancybox=True, fontsize=14, loc='lower right')
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); #plt.ylim([45,130])
-        # plt.ylabel('Total ecosystem C (kgC $\mathregular{m^{-2}}$)', fontsize=11)
-        # plt.title('c) Total ecosystem C from talik (per $\mathregular{m^{-2}})$', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + 'nh_annual_mean_TOTECOSYSC_TALIK_per_area_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        # ## change from 2035
-        # fig = plt.figure(figsize=(12,5),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     plt.plot((ensMembersTOTECOSYSCCONTROL_talik_ts[ens[ensNum]] - ensMembersTOTECOSYSCCONTROL_talik_ts[ens[ensNum]][0])/1000.,
-        #              linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot((ensMembersTOTECOSYSCFEEDBACK_talik_ts[ens[ensNum]] - ensMembersTOTECOSYSCFEEDBACK_talik_ts[ens[ensNum]][0])/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        # plt.plot((TOTECOSYSC_mean_control_ts - TOTECOSYSC_mean_control_ts[0])/1000.,
-        #              color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #              label='SSP2-4.5 permafrost peat')
-        # plt.plot((TOTECOSYSC_mean_feedback_ts - TOTECOSYSC_mean_feedback_ts[0])/1000.,
-        #               color='xkcd:blue',linewidth=2.5,
-        #               label='ARISE-SAI-1.5 permafrost peat')
-        # # plt.legend(fancybox=True, fontsize=13)
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        # plt.xlim([0,34]); plt.ylim([-5,27])
-        # plt.ylabel('$\Delta$ talik C (kg $\mathregular{m^{-2}}$)', fontsize=11)
-        # plt.title('c) $\Delta$ Total ecosystem C from talik (per $\mathregular{m^{-2}})$', 
-        #           fontsize=14, fontweight='bold')
-        # plt.savefig(figureDir + 'nh_annual_mean_change_in_TOTECOSYSC_TALIK_per_area_2035-2069.jpg',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        # ## all land types on same figure
-        # fig = plt.figure(figsize=(12,6),dpi=1200)
-        # for ensNum in range(len(ens)):
-        #     '''total'''
-        #     plt.plot(ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linewidth=0.9)
-        #     '''peat'''
-        #     plt.plot(ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]]/1000.,
-        #              linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]]/1000.,
-        #              linestyle='dashed',color='xkcd:sky blue',linewidth=0.9)
-        #     '''talik'''
-        #     plt.plot(ensMembersTOTECOSYSCCONTROL_talik_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:pale red',linestyle='dotted',linewidth=0.9)
-        #     plt.plot(ensMembersTOTECOSYSCFEEDBACK_talik_ts[ens[ensNum]]/1000.,
-        #              color='xkcd:sky blue',linestyle='dotted',linewidth=0.9)
-        # '''total'''
-        # plt.plot(ensMeanTOTECOSYSCCONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linewidth=2.5,
-        #              label='SSP2-4.5 total permafrost')
-        # plt.plot(ensMeanTOTECOSYSCFEEDBACK_ts/1000.,
-        #              color='xkcd:blue',linewidth=2.5,
-        #              label='ARISE-SAI-1.5 total permafrost')
-        # '''peat'''
-        # plt.plot(ensMeanTOTECOSYSC_PEAT_CONTROL_ts/1000.,
-        #              color='xkcd:scarlet',linestyle='dashed',linewidth=2.5,
-        #              label='SSP2-4.5 permafrost peat')
-        # plt.plot(ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts/1000.,
-        #               color='xkcd:blue',linestyle='dashed',linewidth=2.5,
-        #               label='ARISE-SAI-1.5 permafrost peat')
-        # '''talik'''
-        # plt.plot(TOTECOSYSC_mean_control_ts/1000.,
-        #               color='xkcd:scarlet',linestyle='dotted',linewidth=2.5,
-        #               label='SSP2-4.5 talik')
-        # plt.plot(TOTECOSYSC_mean_feedback_ts/1000.,
-        #               color='xkcd:blue',linestyle='dotted',linewidth=2.5,
-        #               label='ARISE-SAI-1.5 talik')
-        
-        # plt.legend(fancybox=True, fontsize=13, loc=[-0.015,-0.22], ncol=3)
-        # plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'],
-        #            fontsize=12)
-        # plt.xlim([0,34]); #plt.ylim([45,130])
-        # plt.ylabel('Permafrost ecosystem C (kgC $\mathregular{m^{-2}}$)', fontsize=13)
-        # plt.title('Total ecosystem C from permafrost (per $\mathregular{m^{-2}})$', 
-        #           fontsize=15, fontweight='bold')
-        # plt.savefig(figureDir + 'nh_annual_mean_TOTECOSYSC_ALL_LAND_TYPES_per_area_2035-2069.pdf',
-        #             bbox_inches='tight',dpi=1200)
-        # del fig
-        
-        
-        
-        # #### TOTECOSYSC, 50-90N
-        # diff_totecocontrol = {}
-        # diff_totecofeedback = {}
-        # for i in range(len(ens)):
-        #     diff_totecocontrol[ens[i]] = TOTECOSYSCControl_all[ens[i]] - TOTECOSYSCControl_all[ens[i]][0,:,:]
-        #     diff_totecofeedback[ens[i]] = TOTECOSYSCFeedback_all[ens[i]] - TOTECOSYSCFeedback_all[ens[i]][0,:,:]
-            
-            
-        # ensMembersTOTECOSYSCControl_50_90_ts = make_timeseries(10,'TOTECOSYSC',
-        #                                                        lat,lon,90,49.5,360,0,
-        #                                                        diff_totecocontrol)
-        # ensMembersTOTECOSYSCFeedback_50_90_ts = make_timeseries(10,'TOTECOSYSC',
-        #                                                        lat,lon,90,49.5,360,0,
-        #                                                        diff_totecofeedback)
-        
-        # diff_totecocontrol_mean = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCControl_50_90_ts, 10)
-        # diff_totecofeedback_mean = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCFeedback_50_90_ts, 10)
-        
-        # for ensNum in range(len(ens)):
-        #     plt.plot((ensMembersTOTECOSYSCControl_50_90_ts[ens[ensNum]])/(1e15),
-        #              color='xkcd:pale red')
-        #     plt.plot((ensMembersTOTECOSYSCFeedback_50_90_ts[ens[ensNum]])/(1e15),
-        #              color='xkcd:sky blue')
-        # plt.plot(diff_totecocontrol_mean/1e15,linewidth=2,color='xkcd:dark red')
+    #### time series in permafrost soils
+    ensMembersTOTECOSYSCCONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPermafrostControl)
+    ensMeanTOTECOSYSCCONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCONTROL_ts, numEns)
+    
+    ensMembersTOTECOSYSCFEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPermafrostFeedback)
+    ensMeanTOTECOSYSCFEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCFEEDBACK_ts, numEns)
+    
+    ensMembersTOTECOSYSCCONTROL_gC_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPermafrostControl_gC)
+    ensMeanTOTECOSYSCCONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCCONTROL_gC_ts, numEns)
+    
+    ensMembersTOTECOSYSCFEEDBACK_gC_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPermafrostFeedback_gC)
+    ensMeanTOTECOSYSCFEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSCFEEDBACK_gC_ts, numEns)
+    
+    ensMembersTOTVEGCCONTROL_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPermafrostControl)
+    ensMeanTOTVEGCCONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGCCONTROL_ts, numEns)
+    
+    ensMembersTOTVEGCFEEDBACK_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPermafrostFeedback)
+    ensMeanTOTVEGCFEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGCFEEDBACK_ts, numEns)
+    
+    ensMembersTOTVEGCCONTROL_gC_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPermafrostControl_gC)
+    ensMeanTOTVEGCCONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGCCONTROL_gC_ts, numEns)
+    
+    ensMembersTOTVEGCFEEDBACK_gC_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPermafrostFeedback_gC)
+    ensMeanTOTVEGCFEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGCFEEDBACK_gC_ts, numEns)
+    
+    ensMembersTOTSoilCCONTROL_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPermafrostControl)
+    ensMeanTOTSoilCCONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilCCONTROL_ts, numEns)
+    
+    ensMembersTOTSoilCFEEDBACK_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPermafrostFeedback)
+    ensMeanTOTSoilCFEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilCFEEDBACK_ts, numEns)
+    
+    ensMembersTOTSoilCCONTROL_gC_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPermafrostControl_gC)
+    ensMeanTOTSoilCCONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilCCONTROL_gC_ts, numEns)
+    
+    ensMembersTOTSoilCFEEDBACK_gC_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPermafrostFeedback_gC)
+    ensMeanTOTSoilCFEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilCFEEDBACK_gC_ts, numEns)
+    
+    
+    ## peatland pfrost
+    ensMembersTOTECOSYSC_PEAT_CONTROL_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatControl)
+    ensMeanTOTECOSYSC_PEAT_CONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_CONTROL_ts, numEns)
+    
+    ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatFeedback)
+    ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts, numEns)
+    
+    ensMembersTOTECOSYSC_PEAT_CONTROL_gC_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatControl_gC)
+    ensMeanTOTECOSYSC_PEAT_CONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_CONTROL_gC_ts, numEns)
+    
+    ensMembersTOTECOSYSC_PEAT_FEEDBACK_gC_ts = make_timeseries(numEns,'TOTECOSYSC',lat,lon,90,49.5,360,0,TOTECOSYSCPeatFeedback_gC)
+    ensMeanTOTECOSYSC_PEAT_FEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTECOSYSC_PEAT_FEEDBACK_gC_ts, numEns)
+    
+    ensMembersTOTSoilC_PEAT_CONTROL_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPeatControl)
+    ensMeanTOTSoilC_PEAT_CONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilC_PEAT_CONTROL_ts, numEns)
+    
+    ensMembersTOTSoilC_PEAT_FEEDBACK_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPeatFeedback)
+    ensMeanTOTSoilC_PEAT_FEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilC_PEAT_FEEDBACK_ts, numEns)
+    
+    ensMembersTOTSoilC_PEAT_CONTROL_gC_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPeatControl_gC)
+    ensMeanTOTSoilC_PEAT_CONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilC_PEAT_CONTROL_gC_ts, numEns)
+    
+    ensMembersTOTSoilC_PEAT_FEEDBACK_gC_ts = make_timeseries(numEns,'TOTSoilC',lat,lon,90,49.5,360,0,TOTSoilCPeatFeedback_gC)
+    ensMeanTOTSoilC_PEAT_FEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTSoilC_PEAT_FEEDBACK_gC_ts, numEns)
+    
+    ensMembersTOTVEGC_PEAT_CONTROL_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPeatControl)
+    ensMeanTOTVEGC_PEAT_CONTROL_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGC_PEAT_CONTROL_ts, numEns)
+    
+    ensMembersTOTVEGC_PEAT_FEEDBACK_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPeatFeedback)
+    ensMeanTOTVEGC_PEAT_FEEDBACK_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGC_PEAT_FEEDBACK_ts, numEns)
+    
+    ensMembersTOTVEGC_PEAT_CONTROL_gC_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPeatControl_gC)
+    ensMeanTOTVEGC_PEAT_CONTROL_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGC_PEAT_CONTROL_gC_ts, numEns)
+    
+    ensMembersTOTVEGC_PEAT_FEEDBACK_gC_ts = make_timeseries(numEns,'TOTVEGC',lat,lon,90,49.5,360,0,TOTVEGCPeatFeedback_gC)
+    ensMeanTOTVEGC_PEAT_FEEDBACK_gC_ts = make_ensemble_mean_timeseries(ensMembersTOTVEGC_PEAT_FEEDBACK_gC_ts, numEns)
+    
+    
+    #### Fig. S1a all permafrost per square meter - change from 2035
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]] - ensMembersTOTECOSYSCCONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTECOSYSCFEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTECOSYSCCONTROL_ts - ensMeanTOTECOSYSCCONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTECOSYSCFEEDBACK_ts - ensMeanTOTECOSYSCFEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ ecosystem C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('a) $\Delta$ Total ecosystem C from permafrost (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS1a_nh_annual_mean_change_in_TOTECOSYSC_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 6a total over entire 2034 pf domain
+    fig = plt.figure(figsize=(9,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTECOSYSCCONTROL_gC_ts[ens[ensNum]] - ensMembersTOTECOSYSCCONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTECOSYSCFEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTECOSYSCFEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTECOSYSCCONTROL_gC_ts - ensMeanTOTECOSYSCCONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTECOSYSCFEEDBACK_gC_ts - ensMeanTOTECOSYSCFEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xticks(fontsize=12)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-1.7*1e13),(2.5*1e13)])
+    plt.ylabel('$\Delta$ ecosystem gC', fontsize=12)
+    plt.title('a) $\Delta$ Total ecosystem C from permafrost', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig6a_nh_annual_mean_change_in_TOTECOSYSC_in_2034_pf_domain_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+   
+    
+    #### Fig. S1b total soil C
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTSoilCCONTROL_ts[ens[ensNum]] - ensMembersTOTSoilCCONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTSoilCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTSoilCFEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTSoilCCONTROL_ts - ensMeanTOTSoilCCONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTSoilCFEEDBACK_ts - ensMeanTOTSoilCFEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ permafrost soil C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('b) $\Delta$ Total soil C from permafrost (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS1b_nh_annual_mean_change_in_TOTSoilC_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 6b total soil C entire pf domain
+    fig = plt.figure(figsize=(9,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTSoilCCONTROL_gC_ts[ens[ensNum]] - ensMembersTOTSoilCCONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTSoilCFEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTSoilCFEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTSoilCCONTROL_gC_ts - ensMeanTOTSoilCCONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTSoilCFEEDBACK_gC_ts - ensMeanTOTSoilCFEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xticks(fontsize=12)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-1.7*1e13),(2.5*1e13)])
+    plt.ylabel('$\Delta$ permafrost soil gC', fontsize=12)
+    plt.title('b) $\Delta$ Total soil C from permafrost', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig6b_nh_annual_mean_change_in_TOTSoilC_in_2034_pf_domain_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
 
+    
+    
+    #### Fig. S1c total veg C per area
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTVEGCCONTROL_ts[ens[ensNum]] - ensMembersTOTVEGCCONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTVEGCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTVEGCFEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTVEGCCONTROL_ts - ensMeanTOTVEGCCONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTVEGCFEEDBACK_ts - ensMeanTOTVEGCFEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); #plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ vegetation C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('c) $\Delta$ Total vegetation C from permafrost (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS1c_nh_annual_mean_change_in_TOTVEGC_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 6c total veg C entire pf domain
+    fig = plt.figure(figsize=(9,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTVEGCCONTROL_gC_ts[ens[ensNum]] - ensMembersTOTVEGCCONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTVEGCFEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTVEGCFEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTVEGCCONTROL_gC_ts - ensMeanTOTVEGCCONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTVEGCFEEDBACK_gC_ts - ensMeanTOTVEGCFEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xticks(fontsize=12)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-1.7*1e13),(2.5*1e13)])
+    plt.ylabel('$\Delta$ vegetation gC', fontsize=12)
+    plt.title('c) $\Delta$ Total vegetation C from permafrost', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig6c_nh_annual_mean_change_in_TOTVEGC_in_2034_pf_domain_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
         
-        # peatlandEnsMeanFeedbackArea = make_ensemble_mean_timeseries(peatlandPfrostFeedbackArea, numEns)
-        # peatlandEnsMeanControlArea = make_ensemble_mean_timeseries(peatlandPfrostControlArea, numEns)
-        # pfrostEnsMeanFeedbackArea = make_ensemble_mean_timeseries(totalPfrostFeedbackArea, numEns)
-        # pfrostEnsMeanControlArea = make_ensemble_mean_timeseries(totalPfrostControlArea, numEns)
-        
-        
-        
-        #### Fig. 5b permafrost peatland figure
-        ensMeanFeedback = make_ensemble_mean_timeseries(peatlandPfrostFeedbackArea, numEns)
-        ensMeanControl = make_ensemble_mean_timeseries(peatlandPfrostControlArea, numEns)
-        
-        fig, ax = plt.subplots(figsize=(12,5),dpi=1200)    
-        for i in range(numEns):
-            plt.plot(
-                (100 - (peatlandPfrostFeedbackArea[i,0] - peatlandPfrostFeedbackArea[
-                    i,:])/peatlandPfrostFeedbackArea[i,0]*100),
-                    color='xkcd:sky blue',linewidth=0.9)
-            plt.plot(
-                (100 - (peatlandPfrostControlArea[i,0] - peatlandPfrostControlArea
-                        [i,:])/peatlandPfrostControlArea[i,0]*100),
-                    color='xkcd:pale red',linewidth=0.9,linestyle='--')
-        plt.plot(100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100),
-                 color='xkcd:blue',linewidth=3,label='ARISE-SAI-1.5')
-        plt.plot(100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100),
-                 color='xkcd:scarlet',linewidth=3,label='SSP2-4.5',linestyle='--')
-        print("control percent: ", (100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100)))
-        print(" ")
-        print("feedback percent: ", (100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100)))
-        plt.ylabel('% of 2035 permafrost peatland remaining', fontsize=11)
-        plt.title('b) Permafrost peatland remaining', fontsize=14, fontweight='bold')
-        plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
-        plt.xlim([0,34]); plt.ylim(top=105)
-        plt.axhline(100,linestyle='dotted',color='gray',linewidth=1)
-        plt.legend(fancybox=True, fontsize=13)
-        plt.savefig(figureDir + 'Fig5b_percent_peatland_permafrost_soil_only_timeseries.jpg', 
-                    dpi=1200, bbox_inches='tight')
-        
-        from scipy.stats import ttest_ind
-        v1 = (100 - ((ensMeanFeedback[0] - ensMeanFeedback[:])/ensMeanFeedback[0]*100))
-        v2 = (100 - ((ensMeanControl[0] - ensMeanControl[:])/ensMeanControl[0]*100))
-        res = ttest_ind(v1[:5], v2[:5])
-        print("permafrost peatland remaining stats: ", res) # sig different at 95% confidence level by 4th year
-        
-    return peatland
+
+    
+    #### Fig. S2a from peat - change from 2035
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_CONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_FEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTECOSYSC_PEAT_CONTROL_ts - ensMeanTOTECOSYSC_PEAT_CONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5 permafrost peat')
+    plt.plot((ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts - ensMeanTOTECOSYSC_PEAT_FEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5 permafrost peat')
+    # plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ ecosystem C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('a) $\Delta$ Total ecosystem C from permafrost peatland (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS2a_nh_annual_mean_change_in_TOTECOSYSC_PEATLAND_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 7a total over entire 2035 pf domain
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTECOSYSC_PEAT_CONTROL_gC_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_CONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTECOSYSC_PEAT_FEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTECOSYSC_PEAT_FEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTECOSYSC_PEAT_CONTROL_gC_ts - ensMeanTOTECOSYSC_PEAT_CONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTECOSYSC_PEAT_FEEDBACK_gC_ts - ensMeanTOTECOSYSC_PEAT_FEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-2.3*1e13),(2.9*1e13)])
+    plt.ylabel('$\Delta$ ecosystem gC', fontsize=11)
+    plt.title('a) $\Delta$ Total ecosystem C from permafrost peatland', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig7a_nh_annual_mean_change_in_TOTECOSYSC_PEAT_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    
+    
+    
+    #### Fig. S2b total soil C
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTSoilC_PEAT_CONTROL_ts[ens[ensNum]] - ensMembersTOTSoilC_PEAT_CONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTSoilCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTSoilCFEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTSoilC_PEAT_CONTROL_ts - ensMeanTOTSoilC_PEAT_CONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTSoilCFEEDBACK_ts - ensMeanTOTSoilCFEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ permafrost soil C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('b) $\Delta$ Total soil C from permafrost peatland (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS2b_nh_annual_mean_change_in_TOTSoilC_PEAT_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 7b total soil C entire pf domain
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTSoilC_PEAT_CONTROL_gC_ts[ens[ensNum]] - ensMembersTOTSoilC_PEAT_CONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTSoilC_PEAT_FEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTSoilC_PEAT_FEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTSoilC_PEAT_CONTROL_gC_ts - ensMeanTOTSoilC_PEAT_CONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTSoilC_PEAT_FEEDBACK_gC_ts - ensMeanTOTSoilC_PEAT_FEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-2.3*1e13),(2.9*1e13)])
+    plt.ylabel('$\Delta$ permafrost soil gC', fontsize=11)
+    plt.title('b) $\Delta$ Total soil C from permafrost peatland', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig7b_nh_annual_mean_change_in_TOTSoilC_2PEAT_035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    
+    
+    #### Fig. S2c total veg C per area
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTVEGC_PEAT_CONTROL_ts[ens[ensNum]] - ensMembersTOTVEGC_PEAT_CONTROL_ts[ens[ensNum]][0])/1000.,
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTVEGCFEEDBACK_ts[ens[ensNum]] - ensMembersTOTVEGCFEEDBACK_ts[ens[ensNum]][0])/1000.,
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTVEGC_PEAT_CONTROL_ts - ensMeanTOTVEGC_PEAT_CONTROL_ts[0])/1000.,
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTVEGCFEEDBACK_ts - ensMeanTOTVEGCFEEDBACK_ts[0])/1000.,
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); #plt.ylim([-12,27])
+    plt.ylabel('$\Delta$ vegetation C (kg $\mathregular{m^{-2}}$)', fontsize=11)
+    plt.title('c) $\Delta$ Total vegetation C from permafrost peatland (per $\mathregular{m^{-2}})$', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/FigS2c_nh_annual_mean_change_in_TOTVEGC_PEAT_per_area_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    #### Fig. 7c total veg C entire pf domain
+    fig = plt.figure(figsize=(12,5))
+    for ensNum in range(len(ens)):
+        plt.plot((ensMembersTOTVEGC_PEAT_CONTROL_gC_ts[ens[ensNum]] - ensMembersTOTVEGC_PEAT_CONTROL_gC_ts[ens[ensNum]][0]),
+                 linestyle='dashed',color='xkcd:pale red',linewidth=0.9)
+        plt.plot((ensMembersTOTVEGC_PEAT_FEEDBACK_gC_ts[ens[ensNum]] - ensMembersTOTVEGC_PEAT_FEEDBACK_gC_ts[ens[ensNum]][0]),
+                 color='xkcd:sky blue',linewidth=0.9)
+    plt.plot((ensMeanTOTVEGC_PEAT_CONTROL_gC_ts - ensMeanTOTVEGC_PEAT_CONTROL_gC_ts[0]),
+                 color='xkcd:scarlet',linestyle='dashed',linewidth=3,
+                 label='SSP2-4.5')
+    plt.plot((ensMeanTOTVEGC_PEAT_FEEDBACK_gC_ts - ensMeanTOTVEGC_PEAT_FEEDBACK_gC_ts[0]),
+                  color='xkcd:blue',linewidth=3,
+                  label='ARISE-SAI-1.5')
+    plt.legend(fancybox=True, fontsize=13)
+    plt.axhline(y = 0, color = 'k', linewidth=0.7, linestyle = 'dotted')
+    plt.xticks([0,5,10,15,20,25,30,34],['2035','2040','2045','2050','2055','2060','2065','2069'])
+    plt.xlim([0,34]); plt.ylim([(-2.3*1e13),(2.9*1e13)])
+    plt.ylabel('$\Delta$ vegetation gC', fontsize=11)
+    plt.title('c) $\Delta$ Total vegetation C from permafrost peatland', 
+              fontsize=14, fontweight='bold')
+    plt.savefig(figureDir + '/Fig7c_nh_annual_mean_change_in_TOTVEGC_PEAT_2035-2069.pdf',
+                bbox_inches='tight',dpi=1200)
+    del fig
+    
+    
+    return 
 
 
 

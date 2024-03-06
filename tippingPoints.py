@@ -76,6 +76,7 @@ def findTippingPoint(datadir, figuredir):
     import matplotlib.colors as mcolors
     from plottingFunctions import get_colormap, circleBoundary, mapsSubplotsDiff, mapsSubplots
     from matplotlib import colors as c
+    import matplotlib as mpl
    
     circle = circleBoundary
     brbg_cmap,rdbu_cmap,jet,magma,reds,hot,seismic = get_colormap(27)
@@ -240,14 +241,23 @@ def findTippingPoint(datadir, figuredir):
     #########################################################
     #### Talik: ens mean control
     #########################################################
+    import pickle
+    with open(datadir + '/talikAnnFEEDBACK.pkl', 'rb') as fp:
+        talikAnnFEEDBACK = pickle.load(fp)
+    with open(datadir + '/talikAnnCONTROL.pkl', 'rb') as fp:
+        talikAnnCONTROL = pickle.load(fp)
+    
+    talikAnnCONTROLmean = np.load(datadir + '/talikAnnCONTROLmean_NEW.npy')
+    talikAnnFEEDBACKmean = np.load(datadir + '/talikAnnFEEDBACKmean_NEW.npy')
+    
     longitude = lon
-    var,lon2 = add_cyclic_point(talikAnnCONTROLmean,coord=longitude)
+    var,lon2 = add_cyclic_point(talikAnnCONTROLmean[11:,:],coord=longitude)
     
     ## Create figure
     fig = plt.figure(figsize=(10,6))
     norm = mcolors.Normalize(vmin=0, vmax=54)
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.NorthPolarStereo())
-    ax.set_extent([180, -180, 50, 90], crs=ccrs.PlateCarree())
+    ax.set_extent([180, -180, 49, 90], crs=ccrs.PlateCarree())
     theta = np.linspace(0, 2*np.pi, 100)
     center, radius = [0.5, 0.5], 0.5
     verts = np.vstack([np.sin(theta), np.cos(theta)]).T
@@ -260,7 +270,8 @@ def findTippingPoint(datadir, figuredir):
     ax.pcolormesh(lon,lat,landMask[41:,:],transform=ccrs.PlateCarree(),cmap=cmapLand)
     cf1 = ax.pcolormesh(lon2,lat,var,transform=ccrs.PlateCarree(), 
                   norm=norm, cmap=magma)
-    ax.contour(lon,lat,peatlandContour[41:,:],[1],colors='g',
+    
+    ax.contour(lon,lat,peatland[41:,:],[10],colors='g',
                     linewidth=0.4,transform=ccrs.PlateCarree())
     ax.coastlines(linewidth=0.9)
     
@@ -285,12 +296,14 @@ def findTippingPoint(datadir, figuredir):
             ea.set_position([0, pos[1]])
             
     # cbar = plt.colorbar(cf1, ax=ax, ticks=[0,10,20,30,40,50], fraction=0.045,location='bottom',orientation='horizontal')
-    cbar = plt.colorbar(cf1, ax=ax, ticks=[0,10,20,30,40,50],fraction=0.046)
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=magma),
+             ax=ax, orientation='vertical', ticks=[0,10,20,30,40,50],fraction=0.05) # change orientation if needed
+    cbar.ax.tick_params(labelsize=11)
     cbar.ax.set_yticklabels(['2015','2025','2035','2045','2055','2065'])
-    cbar.set_label('Talik formation year', fontsize=11)
-    plt.title('a) SSP2-4.5 talik formation year', fontsize=12, fontweight='bold')
+    cbar.set_label('Talik formation year', fontsize=12)
+    plt.title('a) SSP2-4.5 talik formation year', fontsize=13, fontweight='bold')
     ## Save figure
-    plt.savefig(figureDir + '/control_talik_formation_year_soil_only_MEAN_peat.jpg', 
+    plt.savefig(figuredir + '/Fig3a_control_talik_formation_year_soil_only_MEAN_peat.pdf', 
                 dpi=1200, bbox_inches='tight')
     del fig,ax,var,lon2,longitude,cf1,cbar
     
@@ -298,13 +311,13 @@ def findTippingPoint(datadir, figuredir):
     #### Talik: ens mean feedback
     #########################################################
     longitude = lon
-    var,lon2 = add_cyclic_point(talikAnnFEEDBACKmean,coord=longitude)
+    var,lon2 = add_cyclic_point(talikAnnFEEDBACKmean[11:,:],coord=longitude)
     
     ## Create figure
     fig = plt.figure(figsize=(10,6))
     norm = mcolors.Normalize(vmin=0, vmax=54)
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.NorthPolarStereo())
-    ax.set_extent([180, -180, 50, 90], crs=ccrs.PlateCarree())
+    ax.set_extent([180, -180, 49, 90], crs=ccrs.PlateCarree())
     theta = np.linspace(0, 2*np.pi, 100)
     center, radius = [0.5, 0.5], 0.5
     verts = np.vstack([np.sin(theta), np.cos(theta)]).T
@@ -315,10 +328,8 @@ def findTippingPoint(datadir, figuredir):
     ax.pcolormesh(lon,lat,landMask[41:,:],transform=ccrs.PlateCarree(),cmap=cmapLand)
     cf1 = ax.pcolormesh(lon2,lat,var,transform=ccrs.PlateCarree(), 
                   norm=norm, cmap=magma)
-    ax.contour(lon,lat,peatlandContour[41:,:],[1],colors='g',
-                    linewidth=0.4,transform=ccrs.PlateCarree())
-    # ax.contour(lon,lat,pfrostExtentCONTROLmean[41:,:],[1],colors='b',
-    #             linewidth=0.5,transform=ccrs.PlateCarree())
+    ax.contour(lon,lat,peatland[41:,:],[10],colors='g',
+                linewidth=0.4,transform=ccrs.PlateCarree())
     ax.coastlines(linewidth=0.9)
     
     gl = ax.gridlines(crs=ccrs.PlateCarree(), 
@@ -341,15 +352,15 @@ def findTippingPoint(datadir, figuredir):
         if pos[0] == 150:
             ea.set_position([0, pos[1]])
     
-    cbar = plt.colorbar(cf1, ax=ax, ticks=[0,10,20,30,40,50],fraction=0.046)
-    # cbar = plt.colorbar(cf1, ax=ax, ticks=[0,10,20,30,40,50],fraction=0.045,location='bottom',orientation='horizontal')
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=magma),
+             ax=ax, orientation='vertical', ticks=[0,10,20,30,40,50],fraction=0.05) # change orientation if needed
+    cbar.ax.tick_params(labelsize=11)
     cbar.ax.set_yticklabels(['2015','2025','2035','2045','2055','2065'])
-    cbar.set_label('Talik formation year', fontsize=11)
-    plt.title('b) ARISE-SAI-1.5 talik formation year', fontsize=12, fontweight='bold')
+    cbar.set_label('Talik formation year', fontsize=12)
+    plt.title('b) ARISE-SAI-1.5 talik formation year', fontsize=13, fontweight='bold')
     ## Save figure
-    plt.savefig(figuredir + '/feedback_talik_formation_year_soil_only_MEAN_peat.jpg', 
+    plt.savefig(figuredir + '/Fig3b_feedback_talik_formation_year_soil_only_MEAN_peat.pdf', 
                 dpi=1200, bbox_inches='tight')
-    del fig,ax,var,lon2,longitude,cf1,cbar
     
     
     #########################################################
@@ -397,7 +408,7 @@ def findTippingPoint(datadir, figuredir):
     longitude = lon; plottingVarMean,lon2 = add_cyclic_point(diffMEAN,coord=longitude)
     
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.NorthPolarStereo())
-    ax.set_extent([180, -180, 50, 90], crs=ccrs.PlateCarree())
+    ax.set_extent([180, -180, 49, 90], crs=ccrs.PlateCarree())
     theta = np.linspace(0, 2*np.pi, 100)
     center, radius = [0.5, 0.5], 0.5
     verts = np.vstack([np.sin(theta), np.cos(theta)]).T
@@ -407,19 +418,19 @@ def findTippingPoint(datadir, figuredir):
     ## land mask
     ax.pcolormesh(lon,lat,landMask[41:,:],transform=ccrs.PlateCarree(),cmap=cmapLand)
     ## thawed in control but not feedback
-    ax.pcolormesh(lon,lat,thawedControlNotFeedback,transform=ccrs.PlateCarree(),
+    ax.pcolormesh(lon,lat,thawedControlNotFeedback[11:,:],transform=ccrs.PlateCarree(),
                         cmap=cMapthawedControlNotFeedback)
     ## thawed in feedback but not control
-    ax.pcolormesh(lon,lat,thawedFeedbackNotControl,transform=ccrs.PlateCarree(),
+    ax.pcolormesh(lon,lat,thawedFeedbackNotControl[11:,:],transform=ccrs.PlateCarree(),
                         cmap=cMapthawedFeedbackNotControl)
     ## always thawed = black
-    ax.pcolormesh(lon,lat,talikALWAYSmean,transform=ccrs.PlateCarree(),
+    ax.pcolormesh(lon,lat,talikALWAYSmean[11:,:],transform=ccrs.PlateCarree(),
                         cmap=cMapALWAYSTHAW)
     ## difference in thaw timing
-    cf1 = ax.pcolormesh(lon2,lat,plottingVarMean,transform=ccrs.PlateCarree(), 
+    cf1 = ax.pcolormesh(lon2,lat,plottingVarMean[11:,:],transform=ccrs.PlateCarree(), 
                   norm=norm, cmap='bwr') # seismic
     ## peatland contour
-    ax.contour(lon,lat,peatlandContour[41:,:],[1],colors='g',
+    ax.contour(lon,lat,peatland[41:,:],[10],colors='g',
                     linewidth=0.5,transform=ccrs.PlateCarree())
     ax.coastlines(linewidth=0.9)
     gl = ax.gridlines(crs=ccrs.PlateCarree(), 
@@ -441,17 +452,20 @@ def findTippingPoint(datadir, figuredir):
         pos = ea.get_position()
         if pos[0] == 150:
             ea.set_position([0, pos[1]])
-    cbar = plt.colorbar(cf1, ax=ax, ticks=[-8.5, 0, 8.5], fraction=0.046)
+            
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap='bwr'),
+             ax=ax, orientation='vertical', ticks=[-8.5, 0, 8.5], fraction=0.045) # change orientation if needed
     # cbar = plt.colorbar(cf1, ax=ax, ticks=[-8.5, 0, 8.5], fraction=0.045,location='bottom',orientation='horizontal')
     cbar.ax.set_yticklabels(['Talik forms\nearlier in\nSSP2-4.5', 
                              'Talik forms\nsame year', 
-                             'Talik forms\nearlier in\nARISE-SAI-1.5'])
+                             'Talik forms\nearlier in\nARISE-1.5'])
     cbar.ax.tick_params(size=0)
     
-    plt.title('c) Talik formation year, SSP2-4.5 minus ARISE-SAI', fontsize=12, fontweight='bold')
-    plt.savefig(figuredir + '/control_minus_feedback_talik_formation_soil_only_MEAN_peat.jpg', 
+    plt.title('c) Talik formation year, SSP2-4.5 minus ARISE-SAI-1.5', fontsize=13, fontweight='bold')
+    plt.savefig(figuredir + '/Fig3c_control_minus_feedback_talik_formation_soil_only_MEAN_peat.pdf', 
                 dpi=1200, bbox_inches='tight')
     del fig, ax, cf1
+    
     
     #### area of talik prevented
     ds = xr.open_dataset('/Users/arielmor/Desktop/SAI/data/CESM2/gridareaNH.nc')
@@ -476,34 +490,6 @@ def findTippingPoint(datadir, figuredir):
     print("Peat talik prevented by SAI: ", np.round(gridAreaPeat/1e6, decimals=2), "million km2")
     print("Percent talik prevented by SAI in peat: ", (gridAreaPeat/(gridAreaThaw+gridAreaSSP))*100)
     
-    #### grid areas for all ensemble members
-    gridAreaThawEns = {}
-    gridAreaSAIEns  = {}
-    gridAreaSSPEns  = {}
-    gridAreaPeatEns = {}
-    for i in range(len(ens)):
-        gridAreaThawEns[ens[i]] = np.array(np.nansum((gridArea[41:,:].where(
-            ~np.isnan(thawedControlNotFeedback_mems[ens[i]]))/(1000**2)),axis=(0,1)))
-        
-        gridAreaSAIEns[ens[i]] = np.array(np.nansum((gridArea[41:,:].where(
-            ~np.isnan(thawedFeedbackNotControl_mems[ens[i]]))/(1000**2)),axis=(0,1)))
-        
-        gridAreaSSPEns[ens[i]] = np.array(np.nansum((gridArea[41:,:].where((
-            diff[ens[i]] < 0))/(1000**2)),axis=(0,1)))
-        
-        gridAreaPeatEns[ens[i]] = np.array(np.nansum((gridArea[41:,:].where(
-            (~np.isnan(thawedControlNotFeedback_mems[ens[i]])) & (
-                peatland[41:,:].values > 0))/(1000**2)),axis=(0,1)))
-    
-    print("Talik prevented by SAI (ens mean): ", np.round((
-        sum(gridAreaThawEns.values())/10)/1e6, decimals=2), "million km2")
-    print("Talik caused by SAI (ens mean): ", np.round((
-        sum(gridAreaSAIEns.values())/10)/1e6, decimals=2), "million km2")
-    print("Talik delayed by SAI (ens mean): ", np.round((
-        sum(gridAreaSSPEns.values())/10)/1e6, decimals=2), "million km2")
-    xx = sum(gridAreaSSPEns.values())/10
-    print("Percent talik prevented by SAI in peat (ens mean): ", (
-        (sum(gridAreaPeatEns.values())/10)/((sum(gridAreaThawEns.values())/10)+(sum(gridAreaSSPEns.values())/10)))*100)
     
     #### talik area time series
     ds = xr.open_dataset('/Users/arielmor/Desktop/SAI/data/CESM2/gridareaNH.nc')
@@ -518,17 +504,17 @@ def findTippingPoint(datadir, figuredir):
     
     # control
     talikAreaCONTROL  = np.zeros((55))
-    talikAreaCONTROL[0] = np.nansum(gridArea.where(talikAnnCONTROLmean == 0),axis=(0,1))
+    talikAreaCONTROL[0] = np.nansum(gridArea.where(talikAnnCONTROLmean[11:,:] == 0),axis=(0,1))
     # feedback
     talikAreaFEEDBACK = np.zeros((55))
     talikAreaFEEDBACK[0] = talikAreaFEEDBACK[0] + np.nansum(
-        gridArea.where(talikAnnFEEDBACKmean == 0),axis=(0,1))
+        gridArea.where(talikAnnFEEDBACKmean[11:,:] == 0),axis=(0,1))
     # calculation
     for iyear in range(1,55):
         talikAreaCONTROL[iyear] = talikAreaCONTROL[iyear-1] + np.nansum(
-            gridArea.where(talikAnnCONTROLmean == iyear),axis=(0,1))
+            gridArea.where(talikAnnCONTROLmean[11:,:] == iyear),axis=(0,1))
         talikAreaFEEDBACK[iyear] = talikAreaFEEDBACK[iyear-1] + np.nansum(
-            gridArea.where(talikAnnFEEDBACKmean == iyear),axis=(0,1))
+            gridArea.where(talikAnnFEEDBACKmean[11:,:] == iyear),axis=(0,1))
         
     ## ensemble members
     talikAreaEnsCONTROL  = {}
@@ -549,15 +535,17 @@ def findTippingPoint(datadir, figuredir):
     talikAreaFEEDBACK = make_ensemble_mean_timeseries(talikAreaEnsFEEDBACK, 10)
         
     #### Fig. 4 talik time series
-    fig, ax = plt.subplots(1,1, figsize=(9,5), dpi=1200)
+    fig, ax = plt.subplots(1,1, figsize=(9,5))
     for i in range(len(ens)):
-        ax.plot(np.linspace(2015,2069,55),talikAreaEnsCONTROL[ens[i]]/(1000**2)/1e6,color='xkcd:light red',label='SSP2-4.5',linestyle='--')
-        ax.plot(np.linspace(2035,2069,35),talikAreaEnsFEEDBACK[ens[i]][20:]/(1000**2)/1e6,color='xkcd:dark sky blue',label='ARISE-SAI-1.5')
-    ax.plot(np.linspace(2015,2069,55),talikAreaCONTROL/(1000**2)/1e6,linewidth=2,color='xkcd:dark red',linestyle='--')
-    ax.plot(np.linspace(2035,2069,35),talikAreaFEEDBACK[20:]/(1000**2)/1e6,linewidth=2,color='xkcd:dark blue')
+        ax.plot(np.linspace(2015,2069,55),talikAreaEnsCONTROL[ens[i]]/(1000**2)/1e6,color='xkcd:pale red',
+                label='SSP2-4.5',linestyle='--',linewidth=0.9)
+        ax.plot(np.linspace(2035,2069,35),talikAreaEnsFEEDBACK[ens[i]][20:]/(1000**2)/1e6,color='xkcd:sky blue',
+                label='ARISE-SAI-1.5',linewidth=0.9)
+    ax.plot(np.linspace(2015,2069,55),talikAreaCONTROL/(1000**2)/1e6,linewidth=3,color='xkcd:scarlet',linestyle='--')
+    ax.plot(np.linspace(2035,2069,35),talikAreaFEEDBACK[20:]/(1000**2)/1e6,linewidth=3,color='xkcd:blue')
     from matplotlib.lines import Line2D
-    custom_lines = [Line2D([0], [0], color='xkcd:light red', lw=2, linestyle='--'),
-                    Line2D([0], [0], color='xkcd:dark blue', lw=2)]
+    custom_lines = [Line2D([0], [0], color='xkcd:scarlet', lw=3, linestyle='--'),
+                    Line2D([0], [0], color='xkcd:blue', lw=3)]
     plt.legend(custom_lines, ['SSP2-4.5','ARISE-SAI-1.5'], fancybox=True, fontsize=12)
     plt.xlim([2015,2069])
     ax.set_xticks([2015,2025,2035,2045,2055,2065])
@@ -567,7 +555,7 @@ def findTippingPoint(datadir, figuredir):
     plt.title('Talik area', fontsize=14, fontweight='bold')
     plt.yticks(fontsize=12)
     plt.xticks(fontsize=12)
-    plt.savefig(figuredir + '/Fig4_talik_area_timeseries.jpg',
+    plt.savefig(figuredir + '/Fig4_talik_area_timeseries.pdf',
                 dpi=1200, bbox_inches='tight')
     
     

@@ -161,6 +161,6 @@ def make_maps(var1,latitude,longitude,vmins,vmaxs,levs,mycmap,label,title,saveti
 
     plt.title(str(title), fontsize=16, fontweight='bold', **hfont, y=1.07)
     ## Save figure
-    plt.savefig(figureDir + str(savetitle) + '.png', dpi=1200, bbox_inches='tight')
+    plt.savefig(figureDir + str(savetitle) + '.pdf', dpi=2000, bbox_inches='tight')
     return fig, ax1
 
